@@ -12,6 +12,7 @@ struct DiscoveredBLEDevice: Identifiable, Equatable {
     let rssi: Int
 }
 
+@MainActor
 final class DunenBLEManager: NSObject, ObservableObject {
     @Published var connectionStatus = "Bluetooth not ready"
     @Published var discoveredDevices: [DiscoveredBLEDevice] = []
@@ -95,7 +96,7 @@ final class DunenBLEManager: NSObject, ObservableObject {
         discoveredDevices.removeAll()
         isScanning = true
         connectionStatus = "Scanning for DUNEN / FFE0..."
-        Task { @MainActor in SoundManager.shared.playScanningSound(enabled: settings?.startupSound ?? true) }
+        SoundManager.shared.playScanningSound(enabled: settings?.startupSound ?? true)
         central.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
         DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
             if self.isScanning {
@@ -213,7 +214,7 @@ final class DunenBLEManager: NSObject, ObservableObject {
         stopPollTimer()
         let interval = settings?.updateInterval.rawValue ?? 1.0
         pollTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.developerStatus = "Update interval: \(interval)s" }
+            self?.developerStatus = "Update interval: \(interval)s"
             // keep this conservative: no automatic writes, only read telemetry/known settings request
         }
     }
@@ -227,7 +228,7 @@ final class DunenBLEManager: NSObject, ObservableObject {
         stopDemoTimer()
         let interval = settings?.updateInterval.rawValue ?? 1.0
         demoTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.updateDemo() }
+            self?.updateDemo()
         }
         demoTimer?.fire()
     }
@@ -416,13 +417,13 @@ final class DunenBLEManager: NSObject, ObservableObject {
     private func updateLiveActivityIfNeeded() {
         guard settings?.liveActivityEnabled == true else {
             if #available(iOS 16.1, *) {
-                Task { @MainActor in LiveActivityManager.shared.end() }
+                LiveActivityManager.shared.end()
             }
             return
         }
 
         if #available(iOS 16.1, *) {
-            Task { @MainActor in LiveActivityManager.shared.startIfNeeded(vehicleName: connectedName ?? "Aptum", telemetry: telemetry) }
+            LiveActivityManager.shared.startIfNeeded(vehicleName: connectedName ?? "Aptum", telemetry: telemetry)
         }
     }
 
@@ -454,7 +455,7 @@ final class DunenBLEManager: NSObject, ObservableObject {
     }
 }
 
-extension DunenBLEManager: @preconcurrency CBCentralManagerDelegate {
+extension DunenBLEManager: CBCentralManagerDelegate {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         switch central.state {
         case .poweredOn: connectionStatus = "Bluetooth ready"
@@ -481,7 +482,7 @@ extension DunenBLEManager: @preconcurrency CBCentralManagerDelegate {
         isDemoMode = false
         connectedName = peripheral.name ?? "DUNEN"
         connectionStatus = "Connected. Discovering services..."
-        Task { @MainActor in SoundManager.shared.playConnectSound(enabled: settings?.startupSound ?? true) }
+        SoundManager.shared.playConnectSound(enabled: settings?.startupSound ?? true)
         peripheral.discoverServices([serviceFFE0])
         startPollTimer()
     }
@@ -502,7 +503,7 @@ extension DunenBLEManager: @preconcurrency CBCentralManagerDelegate {
     }
 }
 
-extension DunenBLEManager: @preconcurrency CBPeripheralDelegate {
+extension DunenBLEManager: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         if let error {
             connectionStatus = "Service discovery failed: \(error.localizedDescription)"
